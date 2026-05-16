@@ -1,2 +1,5 @@
 matplotlib==3.10.9
 ortools==9.15.6755
+pyomo==6.10.0
+highspy==1.14.0
+Mosek==11.2.0

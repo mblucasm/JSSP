@@ -9,3 +9,4 @@
 
 !src/shared.py
 !src/models/cp.py
+!src/models/pyomo.py
