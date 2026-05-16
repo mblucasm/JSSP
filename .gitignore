@@ -4,6 +4,9 @@
 !LICENSE.txt
 !requirements.txt
 
+!jsp-instances/
+!jsp-instances/**
+
 !solve.py
 
 !src/

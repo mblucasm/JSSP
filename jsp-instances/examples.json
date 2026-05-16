@@ -1,0 +1,23 @@
+[
+  {
+    "name" : "ex1",
+    "jobs" : 3,
+    "machines" : 3,
+    "optimum" : 24,
+    "path" : "ex/ex1.txt"
+  },
+  {
+    "name" : "ex2",
+    "jobs" : 20,
+    "machines" : 5,
+    "optimum" : 1652,
+    "path" : "ex/ex2.txt"
+  },
+  {
+    "name" : "ex3",
+    "jobs" : 8,
+    "machines" : 11,
+    "optimum" : 280,
+    "path" : "ex/ex3.txt"
+  }
+]
