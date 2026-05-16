@@ -1,0 +1,11 @@
+*
+
+!.gitignore
+!LICENSE.txt
+!requirements.txt
+
+!src/
+!src/models/
+
+!src/shared.py
+!src/models/cp.py
