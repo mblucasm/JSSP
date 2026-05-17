@@ -66,7 +66,7 @@ def main(argv: list[str]) -> None:
             result = model.solve(tee = True)
         else:
             raise RuntimeError("UNREACHABLE")
-        
+
     instance.digraph_write(program.out_path, result.schedule if result else None, program.showcpath)
 
 if __name__ == "__main__":

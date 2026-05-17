@@ -63,10 +63,10 @@ def add_cuts(
                 M_ij = max(0, LST[oi] + int(op_ptime[oi]) - EST[oj])
                 M_ji = max(0, LST[oj] + int(op_ptime[oj]) - EST[oi])
                 z = z_expr(model, oi, oj, z_idx_set)
-                
+
                 model.constraints.add(model.S[oj] >= model.S[oi] + int(op_ptime[oi]) - M_ij * (1 - z))
                 model.constraints.add(model.S[oi] >= model.S[oj] + int(op_ptime[oj]) - M_ji * z)
-                
+
                 active_pairs.add(key)
                 new_pairs.append((oi, oj))
 
@@ -74,22 +74,22 @@ def add_cuts(
         for ok in ops:
             if ok == oi or ok == oj:
                 continue
-                
+
             a, b, c = sorted([oi, oj, ok])
             triple = (a, b, c)
-            
+
             if triple in transitivity_triples_added:
                 continue
-                
+
             has_ab = (a, b) in active_pairs
             has_bc = (b, c) in active_pairs
             has_ac = (a, c) in active_pairs
-            
+
             if has_ab and has_bc and has_ac:
                 z_ab = z_expr(model, a, b, z_idx_set)
                 z_bc = z_expr(model, b, c, z_idx_set)
                 z_ac = z_expr(model, a, c, z_idx_set)
-                
+
                 model.constraints.add(z_ab + z_bc - z_ac <= 1)
                 model.constraints.add(z_ab + z_bc - z_ac >= 0)
                 transitivity_triples_added.add(triple)
@@ -111,21 +111,21 @@ def add_full_machine_constraints(
             key = (min(oi, oj), max(oi, oj))
             if key in active_pairs:
                 continue
-                
+
             M_ij = max(0, LST[oi] + int(op_ptime[oi]) - EST[oj])
             M_ji = max(0, LST[oj] + int(op_ptime[oj]) - EST[oi])
             z = z_expr(model, oi, oj, z_idx_set)
-            
+
             model.constraints.add(model.S[oj] >= model.S[oi] + int(op_ptime[oi]) - M_ij * (1 - z))
             model.constraints.add(model.S[oi] >= model.S[oj] + int(op_ptime[oj]) - M_ji * z)
             active_pairs.add(key)
-            
+
             for k in range(j + 1, len(ops)):
                 ok = ops[k]
-                
+
                 a, b, c = sorted([oi, oj, ok])
                 triple = (a, b, c)
-                
+
                 if triple not in transitivity_triples_added:
                     z_ab = z_expr(model, a, b, z_idx_set)
                     z_bc = z_expr(model, b, c, z_idx_set)
@@ -165,7 +165,7 @@ def solve(instance: Instance, time_limit: float, solver_name: str) -> Result:
     C_UB = sum(int(op_ptime[op]) for op in range(1, total_ops - 1))
     EST: dict[int, int] = {}
     LST: dict[int, int] = {}
-    
+
     for _job, seq in job_sequence.items():
         acc = 0
         for op in seq:
@@ -216,13 +216,13 @@ def solve(instance: Instance, time_limit: float, solver_name: str) -> Result:
         total_ops, np_op_ptime, np_op_job_prev, np_op_job_next,
         *build_mac_links(initial_mac_seq, total_ops)[:2], topo_init
     )
-    
+
     best_upper_bound = get_makespan(N, r_init, np_op_ptime)
     best_feasible_r  = r_init.copy()
 
     print(f">> Initial LB: {global_lower_bound}")
     print(f">> Initial UB: {best_upper_bound}")
-    
+
     warmstart_z_from_heuristic(model, initial_mac_seq, z_idx_set)
 
     iteration = 0
@@ -316,21 +316,21 @@ def solve(instance: Instance, time_limit: float, solver_name: str) -> Result:
             for i in range(len(ops_s)):
                 for j in range(i + 1, len(ops_s)):
                     oi, oj = ops_s[i], ops_s[j]
-                    
+
                     if start_times[oi] + int(op_ptime[oi]) > start_times[oj] + 1e-6:
                         overlapping_ops.add(oi)
                         overlapping_ops.add(oj)
-                        
+
                         key = (min(oi, oj), max(oi, oj))
                         if key not in active_pairs:
                             n_conflicts_nuevos += 1
-                            
+
             if n_conflicts_nuevos > 0:
                 to_add.append((m, n_conflicts_nuevos))
 
         all_ops = set(range(1, total_ops - 1))
         non_overlapping_ops = all_ops - overlapping_ops
-        
+
         highlight_sanas = [(int(op_job[o]), int(op_mac[o])) for o in non_overlapping_ops]
 
         mac_seq = {m: sorted(ops, key=lambda o: start_times[o]) for m, ops in mac_to_ops.items()}
@@ -343,7 +343,7 @@ def solve(instance: Instance, time_limit: float, solver_name: str) -> Result:
                 *build_mac_links(mac_seq, total_ops)[:2], topo
             )
             curr_ub = get_makespan(N, r, np_op_ptime)
-            
+
             if curr_ub < best_upper_bound:
                 best_upper_bound, best_feasible_r = curr_ub, r.copy()
                 print(f">> New UB by heuristic: {best_upper_bound}")
@@ -353,7 +353,7 @@ def solve(instance: Instance, time_limit: float, solver_name: str) -> Result:
                 print(f">> Found topology at {gap_tolerance*100:.1f}%.")
                 print(">> Forcing gap to 0.01% to certify...")
                 forced_gap = 1e-4
-                continue 
+                continue
 
             r_final = np.zeros(total_ops, dtype=np.int32)
             for op in range(1, total_ops - 1):

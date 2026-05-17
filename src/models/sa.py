@@ -340,20 +340,20 @@ def init_simple_schedule(
 def calc_pos_in_mac(N: int, num_macs: int, op_mac: MacArray, mac_prev: OpArray, mac_next: OpArray) -> IntArray:
     total_ops = N + 2
     pos_in_mac = np.full(total_ops, -1, dtype=np.int32)
-    
+
     for m in range(num_macs):
         curr = -1
         for i in range(1, N + 1):
             if op_mac[i] == m and mac_prev[i] == -1:
                 curr = i
                 break
-                
+
         idx = 0
         while curr != -1:
             pos_in_mac[curr] = idx
             idx += 1
             curr = mac_next[curr]
-            
+
     return pos_in_mac
 
 def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iters: int = 50000, use_bidir: bool = True, bidir_c: int = 3, time_limit: Optional[int] = None) -> Result:
@@ -371,7 +371,7 @@ def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iter
 
     if use_bidir:
         print(">> Initializing population with BIDIR...")
-        
+
         job_head = np.zeros(total_ops, dtype=np.int32)
         job_tail = np.zeros(total_ops, dtype=np.int32)
         for i in range(1, N + 1):
@@ -388,10 +388,10 @@ def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iter
 
         for m in range(instance.macs):
             ops_in_m = [i for i in range(1, N + 1) if op_mac[i] == m]
-            
+
             ops_by_tail = sorted(ops_in_m, key=lambda x: job_tail[x], reverse=True)
             for i, op in enumerate(ops_by_tail): mac_sorted_tail[m, i] = op
-            
+
             ops_by_head = sorted(ops_in_m, key=lambda x: job_head[x], reverse=True)
             for i, op in enumerate(ops_by_head): mac_sorted_head[m, i] = op
 
@@ -401,14 +401,14 @@ def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iter
         for i in range(pop_size):
             b_prev, b_next = bidir(
                 N, instance.macs, bidir_c, op_mac, op_ptime, op_job_prev, op_job_next,
-                job_head, job_tail, mac_sorted_tail, mac_sorted_head, int(ops_per_mac), 
+                job_head, job_tail, mac_sorted_tail, mac_sorted_head, int(ops_per_mac),
                 initial_S, initial_T
             )
             b_pos = calc_pos_in_mac(N, instance.macs, op_mac, b_prev, b_next)
             r_init, _ = heads_tails(total_ops, op_ptime, op_job_prev, op_job_next, b_prev, b_next)
-            
+
             p_prev[i], p_next[i], p_pos[i], p_r[i], p_mks[i] = b_prev, b_next, b_pos, r_init, get_makespan(N, r_init, op_ptime)
-            
+
     else:
         print(">> Initializing population with SIMPLE SCHEDULE...")
         b_prev, b_next, b_pos = init_simple_schedule(N, total_ops, instance.macs, op_mac, job_seq_dict)
@@ -425,7 +425,7 @@ def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iter
     for i in range(pop_size):
         p_prev[i], p_next[i], p_pos[i], p_r[i], p_mks[i] = b_prev.copy(), b_next.copy(), b_pos.copy(), r_init.copy(), mks_init
 
-    p_iters = np.zeros(pop_size, dtype=np.int32) 
+    p_iters = np.zeros(pop_size, dtype=np.int32)
     total_iters_run = 0
     history_best = np.zeros(generations, dtype=np.int32)
     history_mean = np.zeros(generations, dtype=np.float64)
@@ -444,7 +444,7 @@ def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iter
 
         if instance.optimum and p_mks[best_idx] == instance.optimum:
             print(f">> Optimal solution found: {p_mks[best_idx]}! Stopping early at generation {gen}.")
-            
+
             history_best = history_best[:gen]
             history_mean = history_mean[:gen]
             break
@@ -453,7 +453,7 @@ def solve(instance: Instance, pop_size: int = 12, generations: int = 25, sa_iter
             print(f">> Time limite reached ({time_limit}s) at gen {gen}. Stopping search...")
             history_best = history_best[:gen]
             history_mean = history_mean[:gen]
-            break   
+            break
 
         new_prev, new_next, new_pos, new_r, new_mks = np.zeros_like(p_prev), np.zeros_like(p_next), np.zeros_like(p_pos), np.zeros_like(p_r), np.zeros_like(p_mks)
         new_prev[0], new_next[0], new_pos[0], new_r[0], new_mks[0] = p_prev[best_idx], p_next[best_idx], p_pos[best_idx], p_r[best_idx], p_mks[best_idx]
