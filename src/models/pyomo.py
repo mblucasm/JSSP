@@ -1,7 +1,7 @@
 import time
 import pyomo.environ as pyo # type: ignore
 
-from src.shared import Result, Schedule, Span, JSSPInstance
+from src.shared import Result, Schedule, Span, Instance
 from pyomo.environ import SolverFactory # type: ignore
 
 from typing import TYPE_CHECKING, Optional
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
 class _BaseModel(pyo.ConcreteModel): # type: ignore
 
-    def __init__(self, instance: JSSPInstance):
+    def __init__(self, instance: Instance):
 
         super().__init__() # type: ignore
 
@@ -67,7 +67,7 @@ class _BaseModel(pyo.ConcreteModel): # type: ignore
 
 class Disjunctive(_BaseModel):
 
-    def __init__(self, instance: JSSPInstance):
+    def __init__(self, instance: Instance):
 
         super().__init__(instance)
         self._calculateDisjunctiveBounds()
@@ -157,7 +157,7 @@ class Disjunctive(_BaseModel):
 
 class TimeIndex(_BaseModel):
 
-    def __init__(self, instance: JSSPInstance):
+    def __init__(self, instance: Instance):
 
         super().__init__(instance)
 

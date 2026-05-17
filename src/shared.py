@@ -66,7 +66,7 @@ class Sequence(list[Mac]):
         assert m in self
         return self[self.index(m) - 1] if not (m == self[0]) else None
 
-class JSSPInstance:
+class Instance:
 
     def __init__(self, name: str, root: str = "jsp-instances") -> None:
 
@@ -245,7 +245,7 @@ class Result:
 
     model: str
     solver: str
-    instance: JSSPInstance
+    instance: Instance
     schedule: Schedule
 
     history_LB: Optional[list[int]] = None

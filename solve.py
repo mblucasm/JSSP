@@ -4,7 +4,7 @@ import sys
 import src.models.cp
 import src.models.pyomo
 
-from src.shared import JSSPInstance
+from src.shared import Instance
 
 class Program:
 
@@ -35,7 +35,7 @@ class Program:
 def main(argv: list[str]) -> None:
 
     program = Program(argv)
-    instance = JSSPInstance(program.instance_name)
+    instance = Instance(program.instance_name)
 
     assert len(program.MODELS) == 5
     if program.model == "TI-HiGHS":

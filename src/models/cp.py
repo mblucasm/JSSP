@@ -6,7 +6,7 @@ from ortools.sat.python.cp_model import CpModel, CpSolver, CpSolverSolutionCallb
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Optional
-    from src.shared import Job, Mac, JSSPInstance, ScheduleType
+    from src.shared import Job, Mac, Instance, ScheduleType
     from ortools.sat.python.cp_model import IntVar, IntervalVar
 
 class HistoryCallback(CpSolverSolutionCallback):
@@ -24,7 +24,7 @@ class HistoryCallback(CpSolverSolutionCallback):
 
 class _BaseModel(CpModel):
 
-    def __init__(self, instance: JSSPInstance) -> None:
+    def __init__(self, instance: Instance) -> None:
         super().__init__()
         self.instance = instance
         self.J = range(instance.jobs)
@@ -74,7 +74,7 @@ class _BaseModel(CpModel):
 
 class Disjunctive(_BaseModel):
 
-    def __init__(self, instance: JSSPInstance) -> None:
+    def __init__(self, instance: Instance) -> None:
 
         super().__init__(instance)
         self._calculate_disjunctive_bounds()
