@@ -674,3 +674,221 @@ def get_critical_path(
             curr = -1
 
     return cpath_temp[:idx][::-1]
+
+@njit
+def bidir(
+    N: int, num_macs: int, c: int,
+    op_mac: MacArray, op_ptime: IntArray,
+    op_job_prev: OpArray, op_job_next: OpArray,
+    job_head: IntArray, job_tail: IntArray,
+    mac_sorted_tail: IntArray,
+    mac_sorted_head: IntArray,
+    ops_per_mac: int,
+    initial_S: OpArray, initial_T: OpArray
+) -> tuple[OpArray, OpArray]:
+
+    total_ops = N + 2
+    in_L = np.zeros(total_ops, dtype = np.bool_)
+    in_R = np.zeros(total_ops, dtype = np.bool_)
+    in_S = np.zeros(total_ops, dtype = np.bool_)
+    in_T = np.zeros(total_ops, dtype = np.bool_)
+
+    in_L[0] = True
+    in_R[N + 1] = True
+
+    for op in initial_S: in_S[op] = True
+    for op in initial_T: in_T[op] = True
+
+    r = np.zeros(total_ops, dtype = np.int32)
+    t = np.zeros(total_ops, dtype = np.int32)
+    free_L = np.zeros(num_macs, dtype = np.int32)
+    free_R = np.zeros(num_macs, dtype = np.int32)
+
+    mac_first_L = np.full(num_macs, -1, dtype = np.int32)
+    mac_last_L = np.full(num_macs, -1, dtype = np.int32)
+    mac_first_R = np.full(num_macs, -1, dtype = np.int32)
+    mac_last_R = np.full(num_macs, -1, dtype = np.int32)
+    next_in_mac = np.full(total_ops, -1, dtype = np.int32)
+
+    scheduled_count = 2
+    five_percent = (total_ops - 2) * 0.05
+    while scheduled_count < total_ops:
+
+        if not (scheduled_count-2) % five_percent:
+            print(scheduled_count-2, "/", total_ops-2)
+
+        if scheduled_count < total_ops:
+            candidates_S: list[OpID] = []
+            for i in range(1, N + 1):
+                if in_S[i]: candidates_S.append(i)
+
+            if candidates_S:
+                costs: list[tuple[OpID, int]] = []
+                for cand in candidates_S:
+                    cost = est(cand, in_L, in_R, r, t, op_mac, op_ptime, job_head, job_tail, mac_sorted_tail, mac_sorted_head, ops_per_mac, True)
+                    costs.append((cand, cost))
+
+                costs.sort(key = lambda x: x[1])
+                limit = min(c, len(costs))
+                idx = np.random.randint(0, limit)
+                best = costs[idx][0]
+
+                m = op_mac[best]
+                in_L[best] = True
+                in_S[best] = False
+                in_T[best] = False
+
+                if mac_first_L[m] == -1: mac_first_L[m] = best
+                if mac_last_L[m] != -1: next_in_mac[mac_last_L[m]] = best
+                mac_last_L[m] = best
+
+                free_L[m] = r[best] + op_ptime[best]
+                scheduled_count += 1
+
+                nxt = op_job_next[best]
+                if nxt <= N and not in_R[nxt]: in_S[nxt] = True
+
+                for op_id in range(1, N + 1):
+                    if in_S[op_id]:
+                        prv_j = op_job_prev[op_id]
+                        r_job = r[prv_j] + op_ptime[prv_j] if (prv_j != -1 and in_L[prv_j]) else 0
+                        r_mac = free_L[op_mac[op_id]]
+                        r[op_id] = max(r_job, r_mac)
+
+        if scheduled_count >= total_ops: break
+
+        if scheduled_count < total_ops:
+            candidates_T: list[OpID] = []
+            for i in range(1, N + 1):
+                if in_T[i]: candidates_T.append(i)
+
+            if candidates_T:
+                costs: list[tuple[OpID, int]] = []
+                for cand in candidates_T:
+                    cost = est(cand, in_L, in_R, r, t, op_mac, op_ptime, job_head, job_tail, mac_sorted_tail, mac_sorted_head, ops_per_mac, False)
+                    costs.append((cand, cost))
+
+                costs.sort(key=lambda x: x[1])
+                idx = np.random.randint(0, min(c, len(costs)))
+                best = costs[idx][0]
+
+                m = op_mac[best]
+                in_R[best] = True
+                in_T[best] = False
+                in_S[best] = False
+
+                if mac_last_R[m] == -1: mac_last_R[m] = best
+                next_in_mac[best] = mac_first_R[m]
+                mac_first_R[m] = best
+
+                free_R[m] = t[best] + op_ptime[best]
+                scheduled_count += 1
+
+                prv = op_job_prev[best]
+                if prv >= 1 and not in_L[prv]: in_T[prv] = True
+
+                for op_id in range(1, N + 1):
+                    if in_T[op_id]:
+                        nxt_j = op_job_next[op_id]
+                        t_job = t[nxt_j] + op_ptime[nxt_j] if (nxt_j != -1 and in_R[nxt_j]) else 0
+                        t_mac = free_R[op_mac[op_id]]
+                        t[op_id] = max(t_job, t_mac)
+
+    final_mac_prev = np.full(total_ops, -1, dtype=np.int32)
+    final_mac_next = np.full(total_ops, -1, dtype=np.int32)
+
+    for m in range(num_macs):
+        if mac_last_L[m] != -1 and mac_first_R[m] != -1:
+            next_in_mac[mac_last_L[m]] = mac_first_R[m]
+
+        curr = mac_first_L[m] if mac_first_L[m] != -1 else mac_first_R[m]
+        while curr != -1:
+            nxt = next_in_mac[curr]
+            if nxt != -1:
+                final_mac_next[curr] = nxt
+                final_mac_prev[nxt] = curr
+            curr = nxt
+
+    return final_mac_prev, final_mac_next
+
+@njit # type: ignore
+def est(
+    op_id: int, in_L: BoolArray, in_R: BoolArray,
+    r: IntArray, t: IntArray,
+    op_mac: MacArray, op_ptime: IntArray,
+    job_head: IntArray, job_tail: IntArray,
+    mac_sorted_tail: OpArray,
+    mac_sorted_head: OpArray,
+    ops_per_mac: int, is_S: bool
+) -> int:
+
+    mac_id = op_mac[op_id]
+
+    if is_S:
+        term_job = job_tail[op_id]
+        term_mac = 0
+        for i in range(ops_per_mac):
+            o = mac_sorted_tail[mac_id, i]
+            if o == -1: break
+            if not in_L[o] and o != op_id:
+                term_mac = op_ptime[o] + job_tail[o]
+                break
+        return r[op_id] + op_ptime[op_id] + max(term_job, term_mac)
+    else:
+        term_job = job_head[op_id]
+        term_mac = 0
+        for i in range(ops_per_mac):
+            o = mac_sorted_head[mac_id, i]
+            if o == -1: break
+            if not in_R[o] and o != op_id:
+                term_mac = op_ptime[o] + job_head[o]
+                break
+        return max(term_job, term_mac) + op_ptime[op_id] + t[op_id]
+
+@njit(cache = True) # type: ignore
+def get_tail(op_id: OpID, N: int, op_job_next: OpArray, op_ptime: IntArray) -> int:
+    result = 0
+    curr = op_job_next[op_id]
+    while curr <= N:
+        assert curr != -1
+        result += op_ptime[curr]
+        curr = op_job_next[curr]
+    return result # type: ignore
+
+@njit(cache = True) # type: ignore
+def get_head(op_id: OpID, op_job_prev: OpArray, op_ptime: IntArray) -> int:
+    result = 0
+    curr = op_job_prev[op_id]
+    while curr >= 1:
+        assert curr != -1
+        result += op_ptime[curr]
+        curr = op_job_prev[curr]
+    return result # type: ignore
+
+@njit(cache = True) # type: ignore
+def move(
+    oblock: OpArray, new_Q: OpArray,
+    op_mac_prev: OpArray, op_mac_next: OpArray,
+    op_pos_in_mac: IntArray,
+) -> None:
+
+    before_block = op_mac_prev[oblock[0]]
+    after_block = op_mac_next[oblock[-1]]
+    start_pos = op_pos_in_mac[oblock[0]]
+
+    if before_block != -1:
+        op_mac_next[before_block] = new_Q[0]
+    op_mac_prev[new_Q[0]] = before_block
+
+    for i in range(len(new_Q)):
+        curr_op = new_Q[i]
+        op_pos_in_mac[curr_op] = start_pos + i
+
+        if i > 0:
+            prev_op = new_Q[i - 1]
+            op_mac_next[prev_op] = curr_op
+            op_mac_prev[curr_op] = prev_op
+
+    if after_block != -1:
+        op_mac_prev[after_block] = new_Q[-1]
+    op_mac_next[new_Q[-1]] = after_block

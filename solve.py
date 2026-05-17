@@ -5,12 +5,13 @@ import src.models.cp as cp
 import src.models.pyomo as pyomo
 import src.models.ais as ais
 import src.models.ts as ts
+import src.models.sa as sa
 
 from src.shared import Instance
 
 class Program:
 
-    MODELS = ["TI-HiGHS", "TI-MOSEK", "DI-HiGHS", "DI-MOSEK", "CP", "AIS", "TS"]
+    MODELS = ["TI-HiGHS", "TI-MOSEK", "DI-HiGHS", "DI-MOSEK", "CP", "AIS", "TS", "SA"]
 
     def __init__(self, argv: list[str]) -> None:
 
@@ -39,7 +40,7 @@ def main(argv: list[str]) -> None:
     program = Program(argv)
     instance = Instance(program.instance_name)
 
-    assert len(program.MODELS) == 7
+    assert len(program.MODELS) == 8
     if program.model == "TI-HiGHS":
         model = pyomo.TimeIndex(instance)
         result = model.solve("appsi_highs", tee = True)
@@ -60,6 +61,8 @@ def main(argv: list[str]) -> None:
         result = model.solve(10000, 3, 'C')
     elif program.model == "TS":
         result = ts.solve(instance, 100000)
+    elif program.model == "SA":
+        result = sa.solve(instance, use_bidir = False)
     else:
         raise RuntimeError("UNREACHABLE")
 
