@@ -396,10 +396,10 @@ class Schedule:
 class Result:
 
     model: str
-    solver: str
     instance: Instance
     schedule: Schedule
 
+    solver: Optional[str] = None
     history_LB: Optional[list[int]] = None
     history_UB: Optional[list[int]] = None
     history_time_s: Optional[list[float]] = None

@@ -16,3 +16,4 @@
 !src/shared.py
 !src/models/cp.py
 !src/models/pyomo.py
+!src/models/ais.py

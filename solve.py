@@ -3,12 +3,13 @@ import sys
 
 import src.models.cp
 import src.models.pyomo
+import src.models.ais
 
 from src.shared import Instance
 
 class Program:
 
-    MODELS = ["TI-HiGHS", "TI-MOSEK", "DI-HiGHS", "DI-MOSEK", "CP"]
+    MODELS = ["TI-HiGHS", "TI-MOSEK", "DI-HiGHS", "DI-MOSEK", "CP", "AIS"]
 
     def __init__(self, argv: list[str]) -> None:
 
@@ -37,7 +38,7 @@ def main(argv: list[str]) -> None:
     program = Program(argv)
     instance = Instance(program.instance_name)
 
-    assert len(program.MODELS) == 5
+    assert len(program.MODELS) == 6
     if program.model == "TI-HiGHS":
         model = src.models.pyomo.TimeIndex(instance)
         result = model.solve("appsi_highs", tee = True)
@@ -53,6 +54,9 @@ def main(argv: list[str]) -> None:
     elif program.model == "CP":
         model = src.models.cp.Disjunctive(instance)
         result = model.solve(tee = True)
+    elif program.model == "AIS":
+        model = src.models.ais.AIS(instance)
+        result = model.solve(10000, 3, 'C')
     else:
         raise RuntimeError("UNREACHABLE")
 
