@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from typing import Optional
     from src.shared import (
-        Instance, Job, Mac, ScheduleType,
+        Instance, Job, ScheduleType,
         OpID, OpArray, JobArray, MacArray,
         IntArray
     )
@@ -203,20 +203,6 @@ def optimize_population_parallel(
         pop_r[i] = best_r
         pop_mks[i] = get_makespan(N, best_r, op_ptime)
         pop_iters[i] = iters_run
-
-def build_mac_links(mac_sequence: dict[Mac, list[OpID]], total_ops: int) -> tuple[OpArray, OpArray, IntArray]:
-    op_mac_prev = np.full(total_ops, -1, dtype = np.int32)
-    op_mac_next = np.full(total_ops, -1, dtype = np.int32)
-    op_pos_in_mac = np.full(total_ops, -1, dtype = np.int32)
-
-    for seq in mac_sequence.values():
-        for i in range(len(seq)):
-            curr = seq[i]
-            op_mac_prev[curr] = seq[i - 1] if i > 0 else -1
-            op_mac_next[curr] = seq[i + 1] if i < len(seq) - 1 else -1
-            op_pos_in_mac[curr] = i
-
-    return op_mac_prev, op_mac_next, op_pos_in_mac
 
 @njit(cache = True) # type: ignore
 def crossover_kolonko(

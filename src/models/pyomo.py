@@ -43,7 +43,7 @@ class _BaseModel(pyo.ConcreteModel): # type: ignore
                     solver.options['dparam.optimizer_max_time'] = time_limit # type: ignore
                     solver.options['dparam.mio_max_time'] = time_limit # type: ignore
                 else:
-                    raise ValueError("Solver not implemented")
+                    raise RuntimeError("Solver not implemented")
 
             solver.solve(self, tee = tee) # type: ignore
 

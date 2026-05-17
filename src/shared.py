@@ -32,7 +32,7 @@ else:
     print(f"WARNING: {__file__}: LaTeX was not detected in system's PATH, using regular plot configuration instead")
     plt.rcParams.update({
         "text.usetex": False,
-        "font.family": "serif", 
+        "font.family": "serif",
         "font.size": 9,
         "axes.labelsize": 10,
         "legend.fontsize": 9,
@@ -892,3 +892,18 @@ def move(
     if after_block != -1:
         op_mac_prev[after_block] = new_Q[-1]
     op_mac_next[new_Q[-1]] = after_block
+
+def build_mac_links(mac_sequence: dict[Mac, list[OpID]], total_ops: int) -> tuple[OpArray, OpArray, IntArray]:
+
+    op_mac_prev = np.full(total_ops, -1, dtype = np.int32)
+    op_mac_next = np.full(total_ops, -1, dtype = np.int32)
+    op_pos_in_mac = np.full(total_ops, -1, dtype = np.int32)
+
+    for seq in mac_sequence.values():
+        for i in range(len(seq)):
+            curr = seq[i]
+            op_mac_prev[curr] = seq[i - 1] if i > 0 else -1
+            op_mac_next[curr] = seq[i + 1] if i < len(seq) - 1 else -1
+            op_pos_in_mac[curr] = i
+
+    return op_mac_prev, op_mac_next, op_pos_in_mac
