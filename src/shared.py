@@ -4,7 +4,10 @@ import os
 import glob
 import json
 import shutil
+import textwrap
 import colorsys
+import itertools
+
 import matplotlib.colors
 import matplotlib.pyplot as plt
 
@@ -34,7 +37,7 @@ else:
         "figure.figsize": (5.9, 3.5),
     })
 
-from typing import Optional
+from typing import Optional, TextIO
 from dataclasses import dataclass
 from matplotlib.colors import ListedColormap
 
@@ -45,6 +48,11 @@ BASE_PALETTE: list[str] = ["#FFE8A1", "#FFDAB9", "#F5A9A9", "#7BA1C7", "#D4EDDA"
 class Span:
     start: int
     duration: int
+
+@dataclass
+class DotNode:
+    j: Job
+    m: Mac
 
 Job = int
 Mac = int
@@ -85,7 +93,7 @@ class Instance:
         self.name: str = match["name"]
         self.jobs: int = match["jobs"]
         self.macs: int = match["machines"]
-        self.optimum: int | None = match["optimum"]
+        self.optimum: Optional[int] = match["optimum"]
         self.jobseq: dict[Job, Sequence] = {}
         self.ptimes: dict[Op, int] = {}
         self.isrect: bool = True
@@ -105,6 +113,150 @@ class Instance:
 
             ptimes = nums[1::2]
             self.ptimes.update({(j, m): p for m, p in zip(macs, ptimes)})
+
+    def digraph_write(self, fp: str, schedule: Optional[Schedule] = None, showcpath: bool = False) -> None:
+
+        assert fp.endswith(".dot")
+        if showcpath:
+            assert schedule
+
+        ranks  = self.digraph_get_ranks()
+        groups = self.digraph_get_groups()
+        conjarcs = self.digraph_get_conjarcs()
+
+        with open(fp, "w") as f:
+            f.write(self._digraph_get_header())
+            self._digraph_write_ranks(f, ranks)
+            f.write('\n')
+            if not schedule: self._digraph_write_disjarcs(f, self.digraph_get_disjarcs())
+            else: self._write_oriented_disjarcs(f, self.digraph_get_oriented_disjarcs(schedule), schedule if showcpath else None)
+            f.write('\n')
+            self._digraph_write_groups(f, groups)
+            f.write('\n')
+            self._digraph_write_conjarcs(f, conjarcs, schedule if showcpath else None)
+            f.write(self._digraph_get_footer())
+
+    def digraph_get_ranks(self) -> list[list[DotNode]]:
+        ranks: list[list[DotNode]] = [[] for _ in range(max(len(seq) for seq in self.jobseq.values()))]
+        for j in range(self.jobs):
+            for i, m in enumerate(self.jobseq[j]):
+                ranks[i].append(DotNode(j = j, m = m))
+        return ranks
+
+    def digraph_get_oriented_disjarcs(self, schedule: Schedule) -> list[tuple[DotNode, DotNode]]:
+        mac_ops: dict[int, list[tuple[int, int]]] = {}
+        for (j, m), span in schedule.schedule.items():
+            if m not in mac_ops:
+                mac_ops[m] = []
+            mac_ops[m].append((span.start, j))
+        oriented_arcs: list[tuple[DotNode, DotNode]] = []
+        for m, ops in mac_ops.items():
+            ops.sort()
+            for i in range(len(ops) - 1):
+                src = DotNode(j = ops[i][1], m = m)
+                dst = DotNode(j = ops[i+1][1], m = m)
+                oriented_arcs.append((src, dst))
+        return oriented_arcs
+
+    def digraph_get_disjarcs(self) -> list[tuple[DotNode, DotNode]]:
+        groups: list[list[DotNode]] = [[] for _ in range(self.macs)]
+        for j in range(self.jobs):
+            for m in self.jobseq[j]:
+                groups[m].append(DotNode(j = j, m = m))
+        return [pair for group in groups if len(group) >= 2 for pair in itertools.combinations(group, 2)]
+
+    def digraph_get_groups(self) -> list[list[DotNode]]:
+        return [[DotNode(j, m) for m in self.jobseq[j]] for j in range(self.jobs)]
+
+    def digraph_get_conjarcs(self) -> list[tuple[DotNode, DotNode, int]]:
+        conjarcs: list[tuple[DotNode, DotNode, int]] = []
+        for j in range(self.jobs):
+            for m in self.jobseq[j]:
+                prev_m = self.jobseq[j].prev(m)
+                src = DotNode(j = j, m = prev_m) if prev_m is not None else DotNode(-1, -1)
+                dst = DotNode(j = j, m = m)
+                lab = 0 if prev_m is None else self.ptimes[j, prev_m]
+                conjarcs.append((src, dst, lab))
+            m = self.jobseq[j][-1]
+            conjarcs.append((DotNode(j = j, m = m), DotNode(j = -1, m = -1), self.ptimes[j, m]))
+        return conjarcs
+
+    def _write_oriented_disjarcs(self, f: TextIO, disjarcs: list[tuple[DotNode, DotNode]], schedule: Optional[Schedule]) -> None:
+        f.write('    edge [style=solid, color=black];\n')
+        all_disjarcs = self.digraph_get_disjarcs()
+        oriented_set = {(src.j, src.m, dst.j, dst.m) for src, dst in disjarcs}
+        for src, dst in all_disjarcs:
+            if (src.j, src.m, dst.j, dst.m) in oriented_set:
+                real_src, real_dst = src, dst
+                is_visible = True
+            elif (dst.j, dst.m, src.j, src.m) in oriented_set:
+                real_src, real_dst = dst, src
+                is_visible = True
+            else:
+                real_src, real_dst = src, dst
+                is_visible = False
+            if not is_visible:
+                f.write(f'    "{real_src.j},{real_src.m}" -> "{real_dst.j},{real_dst.m}" [style=invis];\n')
+            else:
+                if schedule:
+                    if ((real_src.j, real_src.m), (real_dst.j, real_dst.m)) in zip(schedule.cpath, schedule.cpath[1:]):
+                        f.write(f'    "{real_src.j},{real_src.m}" -> "{real_dst.j},{real_dst.m}" [color="#F08080", penwidth=1.25, arrowsize=0.6, arrowhead=normal];\n')
+                    else:
+                        f.write(f'    "{real_src.j},{real_src.m}" -> "{real_dst.j},{real_dst.m}" [color="#00000030"];\n')
+                else:
+                    f.write(f'    "{real_src.j},{real_src.m}" -> "{real_dst.j},{real_dst.m}";\n')
+
+    def _digraph_write_ranks(self, f: TextIO, ranks: list[list[DotNode]]) -> None:
+        f.write('    { rank=min; "s"; }\n')
+        f.write('    { rank=max; "t"; }\n')
+        for rank in ranks:
+            f.write('    { rank=same; ')
+            for node in rank:
+                duration = self.ptimes[node.j, node.m]
+                label_html = f'<<FONT POINT-SIZE="10">{duration}</FONT><BR/>{node.j},{node.m}>'
+                f.write(f'"{node.j},{node.m}" [label={label_html}]; ')
+            f.write('}\n')
+
+    def _digraph_write_disjarcs(self, f: TextIO, disjarcs: list[tuple[DotNode, DotNode]]) -> None:
+        f.write(f'    edge [style=dashed, color="#7BA1C7"];\n')
+        for jump in disjarcs:
+            f.write(f'    "{jump[0].j},{jump[0].m}" -> "{jump[1].j},{jump[1].m}" [dir=both, style=dashed];\n')
+
+    def _digraph_write_groups(self, f: TextIO, groups: list[list[DotNode]]) -> None:
+        for j, group in enumerate(groups):
+            f.write('    ')
+            for node in group:
+                f.write(f'"{node.j},{node.m}" [group=j{j}]; ')
+            f.write('\n')
+
+    def _digraph_write_conjarcs(self, f: TextIO, conjarcs: list[tuple[DotNode, DotNode, int]], schedule: Optional[Schedule]) -> None:
+        f.write(f'    edge [style=solid, color=black];\n');
+        for arc in conjarcs:
+            src = "s" if arc[0].j == -1 else f"{arc[0].j},{arc[0].m}"
+            dst = "t" if arc[1].j == -1 else f"{arc[1].j},{arc[1].m}"
+            if schedule:
+                if ((arc[0].j, arc[0].m), (arc[1].j, arc[1].m)) in zip(schedule.cpath, schedule.cpath[1:]):
+                    f.write(f'    "{src}" -> "{dst}" [color="#F08080", penwidth=1.25, arrowsize=0.6, arrowhead=normal];\n')
+                else:
+                    f.write(f'    "{src}" -> "{dst}" [color="#00000030"];\n')
+            else:
+                f.write(f'    "{src}" -> "{dst}";\n')
+
+    def _digraph_get_header(self) -> str:
+        return textwrap.dedent(f'''
+            digraph {self.name} {r"{"}
+
+                rankdir="LR";
+
+                "s" [shape=doublecircle];
+                "t" [shape=doublecircle];
+
+                edge [penwidth=0.5, arrowsize=0.3, arrowhead=vee, arrowtail=vee];
+                node [shape=circle, width=0.55, fixedsize=true, style=filled, fillcolor="#f5f5f5"];\n
+        ''')
+
+    def _digraph_get_footer(self) -> str:
+        return '}\n'
 
 class Schedule:
 
