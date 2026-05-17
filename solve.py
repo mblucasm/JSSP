@@ -1,15 +1,16 @@
 import os
 import sys
 
-import src.models.cp
-import src.models.pyomo
-import src.models.ais
+import src.models.cp as cp
+import src.models.pyomo as pyomo
+import src.models.ais as ais
+import src.models.ts as ts
 
 from src.shared import Instance
 
 class Program:
 
-    MODELS = ["TI-HiGHS", "TI-MOSEK", "DI-HiGHS", "DI-MOSEK", "CP", "AIS"]
+    MODELS = ["TI-HiGHS", "TI-MOSEK", "DI-HiGHS", "DI-MOSEK", "CP", "AIS", "TS"]
 
     def __init__(self, argv: list[str]) -> None:
 
@@ -38,28 +39,39 @@ def main(argv: list[str]) -> None:
     program = Program(argv)
     instance = Instance(program.instance_name)
 
-    assert len(program.MODELS) == 6
+    assert len(program.MODELS) == 7
     if program.model == "TI-HiGHS":
-        model = src.models.pyomo.TimeIndex(instance)
+        model = pyomo.TimeIndex(instance)
         result = model.solve("appsi_highs", tee = True)
     elif program.model == "TI-MOSEK":
-        model = src.models.pyomo.TimeIndex(instance)
+        model = pyomo.TimeIndex(instance)
         result = model.solve("mosek", tee = True)
     elif program.model == "DI-HiGHS":
-        model = src.models.pyomo.Disjunctive(instance)
+        model = pyomo.Disjunctive(instance)
         result = model.solve("appsi_highs", tee = True)
     elif program.model == "DI-MOSEK":
-        model = src.models.pyomo.Disjunctive(instance)
+        model = pyomo.Disjunctive(instance)
         result = model.solve("mosek", tee = True)
     elif program.model == "CP":
-        model = src.models.cp.Disjunctive(instance)
+        model = cp.Disjunctive(instance)
         result = model.solve(tee = True)
     elif program.model == "AIS":
-        model = src.models.ais.AIS(instance)
+        model = ais.AIS(instance)
         result = model.solve(10000, 3, 'C')
+    elif program.model == "TS":
+        result = ts.solve(instance, 100000)
     else:
         raise RuntimeError("UNREACHABLE")
 
+    print("======= RESULT =======")
+    print(f"Name: {result.instance.name}")
+    print(f"Path: {result.instance.path}")
+    print(f"Size: {result.instance.jobs} x {result.instance.macs}")
+    print(f"Rect: {result.instance.isrect}")
+    print(f"Model: {result.model}")
+    print(f"Solver: {result.solver}")
+    print(f"Makespan: {result.schedule.makespan}")
+    print(f"Optimum: {result.instance.optimum}")
     result.plot()
 
 if __name__ == "__main__":

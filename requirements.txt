@@ -4,3 +4,4 @@ pyomo==6.10.0
 highspy==1.14.0
 Mosek==11.2.0
 alive-progress==3.3.0
+numba==0.65.1

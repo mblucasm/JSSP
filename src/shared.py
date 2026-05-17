@@ -8,8 +8,12 @@ import textwrap
 import colorsys
 import itertools
 
+import numpy as np
+import numpy.typing as npt
 import matplotlib.colors
 import matplotlib.pyplot as plt
+
+from numba import njit # type: ignore
 
 if shutil.which("latex"):
     plt.rcParams.update({
@@ -41,6 +45,7 @@ from typing import Optional, TextIO
 from dataclasses import dataclass
 from matplotlib.colors import ListedColormap
 
+INT32_MAX = 2147483647
 GOLDEN_RATIO_CONJUGATE = 0.618033988749895
 BASE_PALETTE: list[str] = ["#FFE8A1", "#FFDAB9", "#F5A9A9", "#7BA1C7", "#D4EDDA", "#FFF3CD", "#E2E2E2"]
 
@@ -57,7 +62,13 @@ class DotNode:
 Job = int
 Mac = int
 Op = tuple[Job, Mac]
+OpID = int
 ScheduleType = dict[Op, Span]
+OpArray = npt.NDArray[np.int32]
+JobArray = npt.NDArray[np.int32]
+MacArray = npt.NDArray[np.int32]
+IntArray = npt.NDArray[np.int32]
+BoolArray = npt.NDArray[np.bool_]
 
 def get_extended_palette(base_palette: list[str] = BASE_PALETTE, n: int = 100):
     result = list(base_palette)
@@ -485,3 +496,181 @@ class Result:
 
         if save_name: plt.savefig(save_name, bbox_inches = "tight") # type: ignore
         if show: plt.show() # type: ignore
+
+def get_job_sequence(instance: Instance, N: int) -> tuple[dict[Job, list[OpID]], list[Job], list[Mac], list[int], list[OpID], list[OpID]]:
+
+    total_ops = N + 2
+    op_start = 0
+    op_end = N + 1
+
+    op_job = [-1] * total_ops
+    op_mac = [-1] * total_ops
+    op_ptime = [0] * total_ops
+    op_job_prev = [-1] * total_ops
+    op_job_next = [-1] * total_ops
+
+    curr_id = 0
+    job_sequence: dict[Job, list[int]] = {}
+
+    for job, sequence in instance.jobseq.items():
+        job_ops: list[int] = []
+        for mac in sequence:
+            curr_id += 1
+
+            op_job[curr_id] = job
+            op_mac[curr_id] = mac
+            op_ptime[curr_id] = instance.ptimes[job, mac]
+            job_ops.append(curr_id)
+
+        for i in range(len(job_ops)):
+            curr_op = job_ops[i]
+            op_job_prev[curr_op] = job_ops[i - 1] if i > 0 else op_start
+            op_job_next[curr_op] = job_ops[i + 1] if i < len(job_ops) - 1 else op_end
+
+        job_sequence[job] = job_ops
+
+    return job_sequence, op_job, op_mac, op_ptime, op_job_prev, op_job_next
+
+@njit(cache = True) # type: ignore
+def topological_sort_no_cycles(total_ops: int, op_job_next: OpArray, op_mac_next: OpArray) -> OpArray:
+    topo, cycle = topological_sort(total_ops=total_ops, op_job_next=op_job_next, op_mac_next=op_mac_next)
+    if cycle: raise ValueError("Cycle in graph")
+    return topo
+
+@njit(cache = True) # type: ignore
+def topological_sort(total_ops: int, op_job_next: OpArray, op_mac_next: OpArray) -> tuple[OpArray, bool]:
+
+    in_degree = np.zeros(total_ops, dtype = np.int32)
+    adj = np.full((total_ops, 2), -1, dtype = np.int32)
+
+    for u in range(total_ops):
+        idx = 0
+        v_mac = op_mac_next[u]
+        if v_mac != -1:
+            adj[u, idx] = v_mac
+            in_degree[v_mac] += 1
+            idx += 1
+
+        v_job = op_job_next[u]
+        if v_job != -1 and v_job != v_mac:
+            adj[u, idx] = v_job
+            in_degree[v_job] += 1
+
+    head, tail = 0, 0
+    queue = np.empty(total_ops, dtype = np.int32)
+
+    for i in range(total_ops):
+        if in_degree[i] == 0:
+            queue[tail] = i
+            tail += 1
+
+    topo_idx = 0
+    topo_order = np.empty(total_ops, dtype = np.int32)
+
+    while head < tail:
+        u = queue[head]
+        head += 1
+
+        topo_order[topo_idx] = u
+        topo_idx += 1
+
+        for i in range(2):
+            v = adj[u, i]
+            if v != -1:
+                in_degree[v] -= 1
+                if in_degree[v] == 0:
+                    queue[tail] = v
+                    tail += 1
+
+    return topo_order, topo_idx != total_ops
+
+@njit(cache = True) # type: ignore
+def heads_tails(
+    total_ops: int,
+    op_ptime: IntArray,
+    op_job_prev: OpArray, op_job_next: OpArray,
+    op_mac_prev: OpArray, op_mac_next: OpArray,
+    topo_order: Optional[OpArray] = None,
+) -> tuple[IntArray, IntArray]:
+
+    if topo_order is None:
+        topo_order = topological_sort_no_cycles(total_ops=total_ops, op_job_next=op_job_next, op_mac_next=op_mac_next)
+    r = np.zeros(total_ops, dtype = np.int32)
+
+    for i in range(total_ops):
+        op_id = topo_order[i]
+
+        prev_job = op_job_prev[op_id]
+        val_job = r[prev_job] + op_ptime[prev_job] if prev_job != -1 else 0
+
+        prev_mac = op_mac_prev[op_id]
+        val_mac = r[prev_mac] + op_ptime[prev_mac] if prev_mac != -1 else 0
+
+        r[op_id] = max(val_job, val_mac)
+
+    q = np.zeros(total_ops, dtype = np.int32)
+
+    for i in range(total_ops - 1, -1, -1):
+        op_id = topo_order[i]
+
+        next_job = op_job_next[op_id]
+        val_job = q[next_job] + op_ptime[next_job] if next_job != -1 else 0
+
+        next_mac = op_mac_next[op_id]
+        val_mac = q[next_mac] + op_ptime[next_mac] if next_mac != -1 else 0
+
+        q[op_id] = max(val_job, val_mac)
+
+    return r, q
+
+@njit(cache = True) # type: ignore
+def get_makespan(N: int, r: IntArray, op_ptime: IntArray) -> int:
+    best = 0
+    for i in range(1, N + 1):
+        val = r[i] + op_ptime[i]
+        if val > best:
+            best = val
+    return best
+
+def get_schedule(N: int, r: IntArray, op_job: JobArray, op_mac: MacArray, op_ptime: IntArray, verify: bool = True) -> Schedule:
+    schedule: ScheduleType = {}
+    for op_id in range(1, N + 1):
+        job_id = int(op_job[op_id])
+        mac_id = int(op_mac[op_id])
+        schedule[job_id, mac_id] = Span(int(r[op_id]), int(op_ptime[op_id]))
+    return Schedule(schedule, verify=verify)
+
+@njit(cache = True) # type: ignore
+def get_critical_path(
+    N: int, r: IntArray,
+    op_ptime: IntArray,
+    op_job_prev: OpArray, op_mac_prev: OpArray,
+) -> OpArray:
+
+    makespan = get_makespan(N=N, r=r, op_ptime=op_ptime)
+
+    curr = -1
+    for i in range(1, N + 1):
+        if r[i] + op_ptime[i] == makespan:
+            curr = i
+            break
+
+    idx = 0
+    cpath_temp = np.empty(N + 2, dtype = np.int32)
+
+    while curr >= 1:
+        cpath_temp[idx] = curr
+        idx += 1
+        target = r[curr]
+
+        prev_job = op_job_prev[curr]
+        prev_mac = op_mac_prev[curr]
+
+        if prev_job != -1 and r[prev_job] + op_ptime[prev_job] == target:
+            curr = prev_job
+        elif prev_mac != -1 and r[prev_mac] + op_ptime[prev_mac] == target:
+            curr = prev_mac
+        else:
+            curr = -1
+
+    return cpath_temp[:idx][::-1]
