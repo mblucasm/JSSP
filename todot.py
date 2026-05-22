@@ -38,7 +38,7 @@ class Program:
             self.usage(1)
 
     def usage(self, code: int) -> None:
-        print(f"usage: {self.program} <instance> <<out-path>.dot [model] | <out-path>-cpath.dot <model>")
+        print(f"usage: {self.program} <instance> <<out-path>.dot [model] | <out-path>-cpath.dot <model>>")
         print()
         print(f"model:")
         for model in self.MODELS:
